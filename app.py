@@ -1,52 +1,50 @@
 import streamlit as st
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-# streamlit cache clear (or menu)
-@st.cache_resource
+# Streamlit Page Configuration
+st.set_page_config(page_title="Data Visualization App")
+
+# Load Data Function
+@st.cache
 def load_data():
-    tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium")
-    model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-medium")
-    return tokenizer, model
+    url = "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/tips.csv"
+    data = pd.read_csv(url)
+    return data
 
-st.set_page_config(page_title="Chatbot")
-st.write("Welcome to the DialoGPT-medium chatbot example.")
-tokenizer, model = load_data()
+# Data Loading with Caching
+data = load_data()
 
-# Init Session State
-if 'step' not in st.session_state:
-    st.session_state.step = 0
-    st.session_state.chat_history_ids = None
-    st.session_state.history = []
-else:
-    st.session_state.step+=1
+# Sidebar for User Input
+st.sidebar.header("Settings")
+plot_type = st.sidebar.selectbox("Select the plot type:", ["Histogram", "Boxplot", "Scatterplot"])
+column_data = st.sidebar.selectbox("Select the column to display:", data.columns)
 
-input = st.text_input(label="Enter your question:")
+# Display Data
+st.write("## Data Overview", data.head())
 
-if input:
-    # encode the new user input, add the eos_token and return a tensor in Pytorch
-    new_user_input_ids = tokenizer.encode(input + tokenizer.eos_token, return_tensors='pt')
+# Plotting based on user selection
+st.write(f"## {plot_type} of {column_data}")
 
-    # append the new user input tokens to the chat history
-    bot_input_ids = torch.cat([st.session_state.chat_history_ids, new_user_input_ids], dim=-1) if st.session_state.step > 1 else new_user_input_ids
+if plot_type == "Histogram":
+    fig, ax = plt.subplots()
+    sns.histplot(data[column_data], kde=True, ax=ax)
+    st.pyplot(fig)
+elif plot_type == "Boxplot":
+    fig, ax = plt.subplots()
+    sns.boxplot(x=data[column_data], ax=ax)
+    st.pyplot(fig)
+elif plot_type == "Scatterplot":
+    secondary_column = st.sidebar.selectbox("Select the secondary column for scatterplot:", data.columns)
+    fig, ax = plt.subplots()
+    sns.scatterplot(x=data[column_data], y=data[secondary_column], data=data, ax=ax)
+    st.pyplot(fig)
 
-    # generated a response while limiting the total chat history to 1000 tokens, 
-    st.session_state.chat_history_ids = model.generate(bot_input_ids, max_length=1000, pad_token_id=tokenizer.eos_token_id)
+# Reset Button in Sidebar
+if st.sidebar.button('Reset App'):
+    st.experimental_rerun()
 
-    # pretty print last ouput tokens from bot
-    response = tokenizer.decode(st.session_state.chat_history_ids[:, bot_input_ids.shape[-1]:][0], skip_special_tokens=True)
-    st.session_state.history.append(input)
-    st.session_state.history.append(response)
-
-if st.button('Reset'):
-    st.session_state.step = 0
-    st.session_state.chat_history_ids = None
-    st.session_state.history = []
-
-for x in range(len(st.session_state.history)):
-    person = "**User**" if x%2==0 else "**Bot**"
-    st.write(person, st.session_state.history[x])
-    
-st.write("Step: ", st.session_state.step)
-st.write(st.session_state.chat_history_ids)
-
+# Display number of data points
+st.sidebar.write("Total data points:", len(data))
